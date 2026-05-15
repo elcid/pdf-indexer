@@ -185,7 +185,7 @@ def auto_extract_toc(pdf_path: str) -> tuple[list[OutlineNode], argparse.Namespa
         if not line:
             continue
         m = re.match(
-            r"^((?:[A-F]|\d+)(?:\.\d+)*)?\s+(.+?)\s+(\d{1,4}|[ivxlcdm]+)\s*$",
+            r"^((?:[A-F]|\d+)(?:\.\d+)*\s+)?(.+?)\s+(\d{1,4}|[ivxlcdm]+)\s*$",
             line, re.IGNORECASE
         )
         if m:
@@ -291,11 +291,25 @@ def _guess_offsets(pages: list[str], toc_page_idx: int) -> argparse.Namespace:
         text = pages[i].strip()
         if "Preface" in text:
             args.roman_start_pdf = i + 1
-            rmatch = re.search(r'\b(vii|viii|ix|xi|xiv|xv|xvi|xviii)\b', text)
+            rmatch = re.search(
+                r'\b(x{0,3}(?:ix|iv|v?i{0,3}))\b', text, re.IGNORECASE
+            )
             if rmatch:
                 args.roman_start_logical = _roman_to_int(rmatch.group(1))
             else:
+                # No numeral on the Preface page — check adjacent pages
                 args.roman_start_logical = 7
+                for j in (i + 1, i - 1):
+                    if 0 <= j < toc_page_idx:
+                        rmatch2 = re.search(
+                            r'\b(x{0,3}(?:ix|iv|v?i{0,3}))\b',
+                            pages[j].strip(), re.IGNORECASE
+                        )
+                        if rmatch2:
+                            adj_numeral = _roman_to_int(rmatch2.group(1))
+                            # Adjust logical to match the page offset
+                            args.roman_start_logical = adj_numeral - (j - i)
+                            break
             break
 
     return args
