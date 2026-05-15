@@ -205,6 +205,11 @@ def auto_extract_toc(pdf_path: str) -> tuple[list[OutlineNode], argparse.Namespa
                 page = int(page_str)
 
             full_title = f"{num} {title}".strip()
+
+            # Skip page-header artifacts (e.g. "Contents    xv" from TOC pages)
+            if title.lower() == "contents":
+                continue
+
             entries.append((level, full_title, page, is_roman))
 
     if not entries:
