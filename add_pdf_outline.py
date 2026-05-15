@@ -212,6 +212,29 @@ def auto_extract_toc(pdf_path: str) -> tuple[list[OutlineNode], argparse.Namespa
 
     tree = _build_tree(entries)
     offsets = _guess_offsets(pages, toc_start)
+
+    # --- Prepend a "Contents" node ------------------------------------------
+    # Most scientific books have a Contents page in the front matter.  Derive
+    # its logical (Roman) page number from the offset anchors, then try to
+    # confirm by finding a matching Roman numeral on the actual page.
+    toc_pdf = toc_start + 1  # 1-based PDF page
+    toc_logical = toc_pdf - offsets.roman_start_pdf + offsets.roman_start_logical
+
+    # Try to find a Roman numeral on the Contents page itself
+    toc_page_text = pages[toc_start]
+    found_numeral = None
+    for m in re.finditer(
+        r'\b(x{0,3}(?:ix|iv|v?i{0,3}))\b', toc_page_text, re.IGNORECASE
+    ):
+        found_numeral = m.group(1)
+        # If it matches our computed logical, good; otherwise prefer computed
+        break
+
+    if found_numeral is not None:
+        toc_logical = max(toc_logical, _roman_to_int(found_numeral))
+
+    tree.insert(0, OutlineNode("Contents", toc_logical, is_roman=True))
+
     return tree, offsets
 
 
