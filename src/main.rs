@@ -67,18 +67,17 @@ fn collect_page_ids(doc: &Document) -> Vec<ObjectId> {
     }).collect()
 }
 
-fn inject_outline(doc: &mut Document, entries: &[OutlineEntry], mapping: &PageMapping) -> Result<ObjectId, String> {
+fn inject_outline(doc: &mut Document, entries: &[OutlineEntry], mapping: &PageMapping, total_count: i64) -> Result<ObjectId, String> {
     let page_ids = collect_page_ids(doc);
     let mut max_id = doc.max_id;
-    let (first, last, total, _) = build_items(entries, mapping, &page_ids, doc, &mut max_id, None, 0)?;
+    let (first, last, _, _) = build_items(entries, mapping, &page_ids, doc, &mut max_id, None, 0)?;
     max_id += 1;
     let root_id = ObjectId(max_id, 0);
     let mut root = Dictionary::new();
     root.set(b"Type", Object::Name(b"Outlines".to_vec()));
     root.set(b"First", first);
     root.set(b"Last", last);
-    eprintln!("DEBUG root total={}", total);
-    root.set(b"Count", Object::Integer(total));
+    root.set(b"Count", Object::Integer(total_count));
     doc.objects.insert(root_id, Object::Dictionary(root));
 
     let catalog_id = doc.trailer.get(b"Root").and_then(|r| r.as_reference().ok()).ok_or("no catalog")?;
@@ -105,10 +104,10 @@ fn build_items(entries: &[OutlineEntry], mapping: &PageMapping, page_ids: &[Obje
         let pdf_pg = compute_pdf_page(entry.page, entry.roman, mapping);
         let pg_ref = page_ids.get(pdf_pg as usize - 1).copied().unwrap_or(page_ids[0]);
 
-        let (cf, cl, cc, _) = if entry.children.is_empty() {
+        let (cf, cl, cc, _) = if entry.children.as_ref().map_or(true, |v| v.is_empty()) {
             (ObjectId(0, 0), ObjectId(0, 0), 0i64, ObjectId(0, 0))
         } else {
-            build_items(&entry.children, mapping, page_ids, doc, max_id, Some(this), _depth+1)?
+            build_items(entry.children.as_ref().unwrap(), mapping, page_ids, doc, max_id, Some(this), _depth+1)?
         };
 
         let next = if i < entries.len() - 1 { ObjectId(*max_id + 1, 0) } else { ObjectId(0, 0) };
@@ -130,7 +129,7 @@ fn build_items(entries: &[OutlineEntry], mapping: &PageMapping, page_ids: &[Obje
         prev = this; last = this;
         total_desc += 1 + cc;
     }
-    let after = ObjectId(*max_id + 1, 0, 0);
+    let after = ObjectId(*max_id + 1, 0);
     Ok((first, last, total_desc, after))
 }
 
@@ -150,7 +149,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let total = spec.outline.iter().map(count_all).sum::<i64>();
     eprintln!("{} outline entries", total);
     let mut doc = Document::load(&cli.pdf)?;
-    inject_outline(&mut doc, &spec.outline, &mapping)?;
+    inject_outline(&mut doc, &spec.outline, &mapping, total)?;
     let output = cli.output.unwrap_or_else(|| {
         let stem = cli.pdf.file_stem().unwrap().to_string_lossy();
         cli.pdf.with_file_name(format!("{}_indexed.pdf", stem))

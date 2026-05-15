@@ -1,0 +1,265 @@
+Command finished with exit code 101.
+Command output:
+    Checking typenum v1.20.0
+    Checking memchr v2.8.0
+    Checking cfg-if v1.0.4
+    Checking simd-adler32 v0.3.9
+    Checking adler2 v2.0.1
+    Checking equivalent v1.0.2
+    Checking utf8parse v0.2.2
+    Checking crossbeam-utils v0.8.21
+    Checking colorchoice v1.0.5
+    Checking anstyle-parse v1.0.0
+    Checking crc32fast v1.5.0
+    Checking is_terminal_polyfill v1.70.2
+    Checking anstyle v1.0.14
+    Checking regex-syntax v0.8.10
+    Checking anstyle-query v1.1.5
+    Checking num-traits v0.2.19
+    Checking foldhash v0.2.0
+    Checking miniz_oxide v0.8.9
+    Checking anstream v1.0.0
+    Checking allocator-api2 v0.2.21
+    Checking itoa v1.0.18
+    Checking aho-corasick v1.1.4
+    Checking crossbeam-epoch v0.9.18
+    Checking log v0.4.29
+    Checking hashbrown v0.16.1
+    Checking crossbeam-deque v0.8.6
+    Checking no_std_io2 v0.9.4
+    Checking fdeflate v0.3.7
+    Checking serde_core v1.0.228
+    Checking generic-array v0.14.7
+    Checking flate2 v1.1.9
+    Checking powerfmt v0.2.0
+    Checking minimal-lexical v0.2.1
+    Checking adler32 v1.2.0
+    Checking iana-time-zone v0.1.65
+    Checking rle-decode-fast v1.0.3
+    Checking siphasher v1.0.3
+    Checking cpufeatures v0.2.17
+    Checking bitflags v1.3.2
+    Checking hashbrown v0.17.1
+    Checking chrono v0.4.44
+    Checking nom v7.1.3
+    Checking phf_shared v0.11.3
+    Checking png v0.17.16
+    Checking deranged v0.5.8
+    Checking crypto-common v0.1.7
+    Checking block-buffer v0.10.4
+    Checking block-padding v0.3.3
+    Checking digest v0.10.7
+    Checking inout v0.1.4
+    Checking cipher v0.4.4
+    Checking md-5 v0.10.6
+    Checking indexmap v2.14.0
+    Checking libflate_lz77 v2.3.0
+    Checking rayon-core v1.13.0
+    Checking zmij v1.0.21
+    Checking regex-automata v0.4.14
+    Checking jpeg-decoder v0.3.2
+    Checking weezl v0.1.12
+    Checking strsim v0.11.1
+    Checking bytemuck v1.25.0
+    Checking byteorder v1.5.0
+    Checking clap_lex v1.1.0
+    Checking dary_heap v0.3.9
+    Checking jiff v0.2.24
+    Checking either v1.15.0
+    Checking color_quant v1.1.0
+    Checking num-conv v0.2.1
+    Checking time-core v0.1.8
+    Checking rayon v1.12.0
+    Checking libflate v2.3.0
+    Checking clap_builder v4.6.0
+    Checking time v0.3.47
+    Checking image v0.24.9
+    Checking serde v1.0.228
+    Checking serde_json v1.0.149
+    Checking regex v1.12.3
+    Checking thiserror v1.0.69
+    Checking env_filter v1.0.1
+    Checking phf v0.11.3
+    Checking aes v0.8.4
+    Checking cbc v0.1.2
+    Checking sha2 v0.10.9
+    Checking inflate v0.4.5
+    Checking encoding_rs v0.8.35
+    Checking bytes v1.11.1
+    Checking lzw v0.10.0
+    Checking lazy_static v1.5.0
+    Checking ttf-parser v0.24.1
+    Checking rangemap v1.7.1
+    Checking clap v4.6.1
+    Checking env_logger v0.11.10
+    Checking lopdf v0.34.0
+    Checking pdf_oxide v0.1.4
+    Checking pdf-indexer v0.1.0 (/opt/projects/pdf-indexer)
+error[E0600]: cannot apply unary operator `-` to type `u32`
+  --> src/main.rs:54:76
+   |
+54 |     for ch in sl.chars().rev() { let c = vals[&ch]; t += if c>=p {c} else {-c}; p = c; }
+   |                                                                            ^^ cannot apply unary operator `-`
+   |
+   = note: unsigned values cannot be negated
+
+error[E0423]: expected function, tuple struct or tuple variant, found type alias `ObjectId`
+  --> src/main.rs:75:19
+   |
+75 |     let root_id = ObjectId(max_id, 0);
+   |                   ^^^^^^^^
+   |
+help: you might have meant to use `:` for type annotation
+   |
+75 -     let root_id = ObjectId(max_id, 0);
+75 +     let root_id: ObjectId(max_id, 0);
+   |
+
+error[E0308]: mismatched types
+  --> src/main.rs:84:60
+   |
+84 |     let catalog_id = doc.trailer.get(b"Root").and_then(|r| r.as_reference().ok()).ok_or("no catalog")?;
+   |                                                            ^^^^^^^^^^^^^^^^^^^^^ expected `Result<_, Error>`, found `Option<(u32, u16)>`
+   |
+   = note: expected enum `Result<_, lopdf::Error>`
+              found enum `std::option::Option<(u32, u16)>`
+help: try wrapping the expression in `Ok`
+   |
+84 |     let catalog_id = doc.trailer.get(b"Root").and_then(|r| Ok(r.as_reference().ok())).ok_or("no catalog")?;
+   |                                                            +++                     +
+
+error[E0599]: no method named `ok_or` found for enum `Result<T, E>` in the current scope
+  --> src/main.rs:84:83
+   |
+84 |     let catalog_id = doc.trailer.get(b"Root").and_then(|r| r.as_reference().ok()).ok_or("no catalog")?;
+   |                                                                                   ^^^^^ method not found in `Result<_, lopdf::Error>`
+
+error[E0423]: expected function, tuple struct or tuple variant, found type alias `ObjectId`
+  --> src/main.rs:97:40
+   |
+97 |     if entries.is_empty() { return Ok((ObjectId(0, 0), ObjectId(0, 0), 0, ObjectId(0, 0))); }
+   |                                        ^^^^^^^^ not a function, tuple struct or tuple variant
+
+error[E0423]: expected function, tuple struct or tuple variant, found type alias `ObjectId`
+  --> src/main.rs:97:56
+   |
+97 |     if entries.is_empty() { return Ok((ObjectId(0, 0), ObjectId(0, 0), 0, ObjectId(0, 0))); }
+   |                                                        ^^^^^^^^ not a function, tuple struct or tuple variant
+
+error[E0423]: expected function, tuple struct or tuple variant, found type alias `ObjectId`
+  --> src/main.rs:97:75
+   |
+97 |     if entries.is_empty() { return Ok((ObjectId(0, 0), ObjectId(0, 0), 0, ObjectId(0, 0))); }
+   |                                                                           ^^^^^^^^ not a function, tuple struct or tuple variant
+
+error[E0423]: expected function, tuple struct or tuple variant, found type alias `ObjectId`
+  --> src/main.rs:98:21
+   |
+98 |     let mut first = ObjectId(0, 0);
+   |                     ^^^^^^^^
+   |
+help: you might have meant to use `:` for type annotation
+   |
+98 -     let mut first = ObjectId(0, 0);
+98 +     let mut first: ObjectId(0, 0);
+   |
+
+error[E0423]: expected function, tuple struct or tuple variant, found type alias `ObjectId`
+  --> src/main.rs:99:20
+   |
+99 |     let mut last = ObjectId(0, 0);
+   |                    ^^^^^^^^
+   |
+help: you might have meant to use `:` for type annotation
+   |
+99 -     let mut last = ObjectId(0, 0);
+99 +     let mut last: ObjectId(0, 0);
+   |
+
+error[E0423]: expected function, tuple struct or tuple variant, found type alias `ObjectId`
+   --> src/main.rs:100:20
+    |
+100 |     let mut prev = ObjectId(0, 0);
+    |                    ^^^^^^^^
+    |
+help: you might have meant to use `:` for type annotation
+    |
+100 -     let mut prev = ObjectId(0, 0);
+100 +     let mut prev: ObjectId(0, 0);
+    |
+
+error[E0423]: expected function, tuple struct or tuple variant, found type alias `ObjectId`
+   --> src/main.rs:104:20
+    |
+104 |         let this = ObjectId(*max_id, 0);
+    |                    ^^^^^^^^
+    |
+help: you might have meant to use `:` for type annotation
+    |
+104 -         let this = ObjectId(*max_id, 0);
+104 +         let this: ObjectId(*max_id, 0);
+    |
+
+error[E0423]: expected function, tuple struct or tuple variant, found type alias `ObjectId`
+   --> src/main.rs:109:14
+    |
+109 |             (ObjectId(0, 0), ObjectId(0, 0), 0i64, ObjectId(0, 0))
+    |              ^^^^^^^^ not a function, tuple struct or tuple variant
+
+error[E0423]: expected function, tuple struct or tuple variant, found type alias `ObjectId`
+   --> src/main.rs:109:30
+    |
+109 |             (ObjectId(0, 0), ObjectId(0, 0), 0i64, ObjectId(0, 0))
+    |                              ^^^^^^^^ not a function, tuple struct or tuple variant
+
+error[E0423]: expected function, tuple struct or tuple variant, found type alias `ObjectId`
+   --> src/main.rs:109:52
+    |
+109 |             (ObjectId(0, 0), ObjectId(0, 0), 0i64, ObjectId(0, 0))
+    |                                                    ^^^^^^^^ not a function, tuple struct or tuple variant
+
+error[E0423]: expected function, tuple struct or tuple variant, found type alias `ObjectId`
+   --> src/main.rs:114:47
+    |
+114 |         let next = if i < entries.len() - 1 { ObjectId(*max_id + 1, 0) } else { ObjectId(0, 0) };
+    |                                               ^^^^^^^^ not a function, tuple struct or tuple variant
+
+error[E0423]: expected function, tuple struct or tuple variant, found type alias `ObjectId`
+   --> src/main.rs:114:81
+    |
+114 |         let next = if i < entries.len() - 1 { ObjectId(*max_id + 1, 0) } else { ObjectId(0, 0) };
+    |                                                                                 ^^^^^^^^ not a function, tuple struct or tuple variant
+
+error[E0423]: expected function, tuple struct or tuple variant, found type alias `ObjectId`
+   --> src/main.rs:124:20
+    |
+124 |         if prev != ObjectId(0, 0) { dict.set(b"Prev", Object::Reference(prev)); }
+    |                    ^^^^^^^^ not a function, tuple struct or tuple variant
+
+error[E0423]: expected function, tuple struct or tuple variant, found type alias `ObjectId`
+   --> src/main.rs:125:20
+    |
+125 |         if next != ObjectId(0, 0) { dict.set(b"Next", Object::Reference(next)); }
+    |                    ^^^^^^^^ not a function, tuple struct or tuple variant
+
+error[E0423]: expected function, tuple struct or tuple variant, found type alias `ObjectId`
+   --> src/main.rs:129:21
+    |
+129 |         if first == ObjectId(0, 0) { first = this; }
+    |                     ^^^^^^^^ not a function, tuple struct or tuple variant
+
+error[E0423]: expected function, tuple struct or tuple variant, found type alias `ObjectId`
+   --> src/main.rs:133:17
+    |
+133 |     let after = ObjectId(*max_id + 1, 0, 0);
+    |                 ^^^^^^^^
+    |
+help: you might have meant to use `:` for type annotation
+    |
+133 -     let after = ObjectId(*max_id + 1, 0, 0);
+133 +     let after: ObjectId(*max_id + 1, 0, 0);
+    |
+
+Some errors have detailed explanations: E0308, E0423, E0599, E0600.
+For more information about an error, try `rustc --explain E0308`.
+error: could not compile `pdf-indexer` (bin "pdf-indexer") due to 20 previous errors
