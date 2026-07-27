@@ -156,14 +156,14 @@ def auto_extract_toc(pdf_path: str) -> tuple[list[OutlineNode], argparse.Namespa
     toc_start = None
     for i, page_text in enumerate(pages):
         for line in page_text.strip().split("\n"):
-            if line.strip().lower() in ("contents", "table of contents"):
+            if line.strip().lower() in ("contents", "table of contents", "inhalt", "inhaltsverzeichnis"):
                 toc_start = i
                 break
         if toc_start is not None:
             break
 
     if toc_start is None:
-        sys.exit("Could not find a 'Contents' page in the PDF.")
+        sys.exit("Could not find a 'Contents' or 'Inhalt' page in the PDF.")
 
     # Find where TOC ends (blank page or start of chapter 1)
     toc_end = None

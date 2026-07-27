@@ -176,6 +176,24 @@ impl PageNumberMap {
         entries.sort_by_key(|(l, _)| *l);
         // Deduplicate — keep the first occurrence (earliest PDF page)
         entries.dedup_by_key(|(l, _)| *l);
+
+        // Sanitize: remove entries where |logical - pdf_page| is an outlier vs the
+        // median offset.  Cross-reference running headers (e.g. "97 | 99 ... 381"
+        // or "100 ... 5 | VI") extract bogus numbers; the real page is always the
+        // one whose offset from the PDF page is consistent with its neighbours.
+        if entries.len() >= 4 {
+            let mut offsets: Vec<i64> = entries
+                .iter()
+                .map(|(l, p)| *p as i64 - *l as i64)
+                .collect();
+            offsets.sort();
+            let median = offsets[offsets.len() / 2];
+            entries.retain(|(l, p)| {
+                let offset = *p as i64 - *l as i64;
+                (offset - median).unsigned_abs() <= 50
+            });
+        }
+
         Self { entries }
     }
 
@@ -256,7 +274,20 @@ fn extract_page_number(page_text: &str) -> Option<u32> {
         if words.len() == 1 && n <= 25 {
             return None;
         }
-        // Otherwise first number is page: "78  5. Generalized Polygons …"
+        // When the line has a page-reference pipe "|" (e.g. "97 | 99 ... 381"),
+        // the first number is a cross-reference, not the page number.
+        // Use the LAST number instead (the actual printed page).
+        if first_line.contains('|') && numbers.len() > 1 {
+            return numbers.last().copied();
+        }
+        // For lines without cross-ref pipes: a small first number with other
+        // numbers on the line is likely a section/cross-ref, not the page.
+        //   e.g. "6 | VII f.  Vorrede ...  101" → page 101 (caught above by |)
+        //   e.g. "17 | XXVIII f. ...  137"        → page 137
+        if n <= 25 && numbers.len() > 1 {
+            return numbers.last().copied();
+        }
+        // Otherwise first number is page: "12  Vorwort" or "78  5. Generalized …"
         return Some(n);
     }
 
@@ -629,10 +660,12 @@ fn extract_toc(pdf_path: &Path) -> Result<(Vec<OutlineEntry>, PageMapping)> {
         .position(|page| {
             page.lines().any(|line| {
                 let t = line.trim().to_lowercase();
-                t == "contents" || t == "table of contents"
+                // Fuzzy match: "CONTENTS", "Inhalt", "Table of Contents", etc.
+                t.contains("contents") || t.contains("table of contents")
+                    || t.contains("inhalt") || t.contains("inhaltsverzeichnis")
             })
         })
-        .context("could not find a 'Contents' or 'Table of Contents' page")?;
+        .context("could not find a 'Contents', 'Inhalt', or 'Table of Contents' page")?;
 
     // ── 3. Find where the TOC ends ────────────────────────────────────────
     let toc_end = (toc_start + 1..pages.len().min(toc_start + 10))
@@ -640,9 +673,8 @@ fn extract_toc(pdf_path: &Path) -> Result<(Vec<OutlineEntry>, PageMapping)> {
             let text = pages[i].trim();
             text.is_empty()
                 || text.lines().any(|l| {
-                    let l = l.trim();
-                    l == "Chapter 1"
-                        || l == "CHAPTER 1"
+                    let l = l.trim().to_lowercase();
+                    l == "chapter 1"
                         || l == "1"
                         || (l.starts_with("1 ")
                             && l.chars().nth(2).is_some_and(|c| c.is_alphabetic()))
@@ -655,7 +687,7 @@ fn extract_toc(pdf_path: &Path) -> Result<(Vec<OutlineEntry>, PageMapping)> {
     // ── 4. Parse individual TOC entries ───────────────────────────────────
     let parsed = parse_toc_entries(&toc_text)?;
     if parsed.is_empty() {
-        anyhow::bail!("no TOC entries could be parsed from the Contents page");
+        anyhow::bail!("no TOC entries could be parsed from the Contents/Inhalt page");
     }
 
     // ── 5. Guess page offsets ─────────────────────────────────────────────
@@ -765,7 +797,8 @@ fn parse_toc_entries(toc_text: &str) -> Result<Vec<TocLine>> {
 
         let mut title = words[0..words.len() - 1].join(" ");
 
-        if title.to_lowercase().trim() == "contents" && is_roman {
+        if (title.to_lowercase().trim().contains("contents")
+            || title.to_lowercase().trim().contains("inhalt")) && is_roman {
             continue;
         }
 
@@ -897,9 +930,8 @@ fn guess_offsets(pages: &[&str], toc_start: usize, toc_end: usize) -> PageMappin
     // ── Arabic start: first page after TOC that looks like Chapter 1 ───────
     for (i, page) in pages.iter().enumerate().skip(toc_end) {
         let looks_like_chapter1 = page.trim().lines().any(|l| {
-            let t = l.trim();
-            t == "Chapter 1"
-                || t == "CHAPTER 1"
+            let t = l.trim().to_lowercase();
+            t == "chapter 1"
                 || (t == "1"
                     && page
                         .trim()
