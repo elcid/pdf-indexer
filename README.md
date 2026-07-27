@@ -2,8 +2,10 @@
 
 Inject a navigable table-of-contents outline into any PDF — Rust port.
 
-Reads a hierarchical outline spec (JSON), maps logical book page numbers to
-physical PDF pages, and writes the outline tree as PDF bookmark objects.
+Reads a hierarchical outline spec (JSON) **or** auto-extracts the TOC
+from the PDF's own contents pages via `pdftotext`, maps logical book
+page numbers to physical PDF pages, and writes the outline tree as
+PDF bookmark objects.
 
 ## Build
 
@@ -18,6 +20,9 @@ The binary lands at `target/release/pdf-indexer`.
 ```bash
 # From a JSON specification
 pdf-indexer book.pdf --json outline.json -o book_indexed.pdf
+
+# Auto-extract TOC from the PDF's own Contents/Inhalt pages
+pdf-indexer book.pdf --toc -o book_indexed.pdf
 
 # Override page offsets from the CLI
 pdf-indexer book.pdf --json outline.json --arabic-start 1:21 --roman-start vii:5
@@ -45,12 +50,57 @@ pdf-indexer book.pdf --json outline.json --arabic-start 1:21 --roman-start vii:5
 - `"roman": true` — marks front-matter pages; absent means Arabic numbering
 - `"children"` — nested sections, any depth
 
+## Features
+
+### `--toc` auto-extraction
+
+Automatically locates the table-of-contents page and extracts all entries.
+Supports both English ("Contents", "Table of Contents") and German
+("Inhalt", "Inhaltsverzeichnis") headings. The tool:
+
+1. Runs `pdftotext` (requires **poppler-utils**) and scans for the TOC page
+2. Detects page-number mapping offsets: Roman front-matter via Preface/Vorwort,
+   Arabic body via Chapter 1 / first numbered section
+3. Builds a blank-page-aware `PageNumberMap` from printed page numbers,
+   **sanitized** to discard cross-reference running headers that some
+   scholarly editions place alongside real page numbers
+   (e.g. "97 | 99  Zweytes Kapitel ...  381" correctly resolves to page 381)
+4. Recursively nests entries by section numbering (dot-depth and section
+   boundaries)
+
+### Page-number extraction robustness
+
+The `PageNumberMap` handles:
+
+- **Blank pages** — absent from the extracted text, skipped automatically
+- **Cross-reference headers** — scholarly editions that print
+  GW21-style references ("6 | VII f.") alongside the real page number
+  are handled with median-outlier filtering
+- **Section-title pages** — chapter openings that show only "5" or "VI"
+  are treated as chapter breaks rather than page number entries
+
+### Page-mapping offsets
+
+Books often re-start page numbering in the body (Arabic) after Roman-numeral
+front matter.  Set the anchor once in the JSON:
+
+```json
+{"arabic_start_logical": 11, "arabic_start_pdf": 12}
+```
+
+means "book page 11 starts on physical PDF page 12".  Or use `--arabic-start`
+/ `--roman-start` on the command line to override the JSON values.
+
 ## How it works
 
 1. Loads the PDF via `lopdf`, finds all page objects (`/Type /Page`)
-2. Recursively builds outline items — each gets a `/Title`, `/Dest` (page + XYZ), `/Parent`, `/Prev`, `/Next`, and `/Count` (−N for collapsed children)
+2. Recursively builds outline items — each gets a `/Title`, `/Dest`
+   (page + XYZ), `/Parent`, `/Prev`, `/Next`, and `/Count`
+   (−N for collapsed children)
 3. Creates the `/Outlines` root object, updates the catalog entry
 4. `doc.save()` rebuilds the cross-reference table and writes the output
+
+No Ghostscript dependency.
 
 ## Dependencies
 
@@ -59,4 +109,5 @@ pdf-indexer book.pdf --json outline.json --arabic-start 1:21 --roman-start vii:5
 | `lopdf` | PDF read, object manipulation, write (xref rebuild) |
 | `clap` | CLI argument parsing |
 | `serde` / `serde_json` | JSON outline spec deserialization |
-| `pdf_oxide` | reserved for future validation / parsing (WIP; no write API as of 0.1) |
+
+**Runtime requirement:** `pdftotext` (from `poppler-utils`) for `--toc` mode.
