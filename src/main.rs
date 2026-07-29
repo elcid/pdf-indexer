@@ -692,7 +692,12 @@ fn extract_toc(pdf_path: &Path) -> Result<(Vec<OutlineEntry>, PageMapping)> {
     // ── 4. Parse individual TOC entries ───────────────────────────────────
     let parsed = parse_toc_entries(&toc_text)?;
     if parsed.is_empty() {
-        anyhow::bail!("no TOC entries could be parsed from the Contents/Inhalt page");
+        anyhow::bail!(
+            "no TOC entries could be parsed from the Contents/Inhalt page\n  \
+             hint: the auto-extractor needs page numbers at the end of each TOC \
+             line;\n  \
+             if your TOC has no page numbers, use --json instead"
+        );
     }
 
     // ── 5. Guess page offsets ─────────────────────────────────────────────
