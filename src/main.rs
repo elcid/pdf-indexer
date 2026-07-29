@@ -485,19 +485,19 @@ fn build_outline(
         let this_id: ObjectId = (*next_id, 0);
 
         let pdf_page = compute_pdf_page(entry.page, entry.roman, mapping);
-        let page_ref = page_ids
-            .get(pdf_page as usize - 1)
-            .copied()
-            .with_context(|| {
-                format!(
-                    "entry '{}': logical page {} → PDF page {} is out of range \
-                     (PDF has {} pages)",
-                    entry.title,
-                    entry.page,
-                    pdf_page,
-                    page_ids.len()
-                )
-            })?;
+        let Some(page_ref) = page_ids.get(pdf_page as usize - 1).copied() else {
+            eprintln!(
+                "warning: skipping entry '{}': logical page {} → PDF page {} \
+                 is out of range (PDF has {} pages)",
+                entry.title,
+                entry.page,
+                pdf_page,
+                page_ids.len()
+            );
+            // Skip this entry and its children.  The object ID counter has
+            // already bumped, but an unused ID is harmless in lopdf.
+            continue;
+        };
 
         let (child_first, child_last, child_count) = if entry.children.is_empty() {
             (NULL_ID, NULL_ID, 0)
@@ -660,9 +660,14 @@ fn extract_toc(pdf_path: &Path) -> Result<(Vec<OutlineEntry>, PageMapping)> {
         .position(|page| {
             page.lines().any(|line| {
                 let t = line.trim().to_lowercase();
-                // Fuzzy match: "CONTENTS", "Inhalt", "Table of Contents", etc.
-                t.contains("contents") || t.contains("table of contents")
-                    || t.contains("inhalt") || t.contains("inhaltsverzeichnis")
+                let first = t.split_whitespace().next().unwrap_or("");
+                // Match heading: "Contents" or "Inhalt" as first word, or
+                // multi-word "Table of Contents" / "Inhaltsverzeichnis".
+                // Use first-word check to avoid matching copyright CIP data
+                // (e.g. "CONTENTS: 1. Programming  1").
+                first == "contents" || first == "inhalt"
+                    || t.contains("table of contents")
+                    || t.contains("inhaltsverzeichnis")
             })
         })
         .context("could not find a 'Contents', 'Inhalt', or 'Table of Contents' page")?;
