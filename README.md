@@ -18,6 +18,9 @@ The binary lands at `target/release/pdf-indexer`.
 ## Usage
 
 ```bash
+# Graphical TOC editor (Linux / Windows / macOS)
+pdf-indexer --gui
+
 # From a JSON specification
 pdf-indexer book.pdf --json outline.json -o book_indexed.pdf
 
@@ -27,6 +30,31 @@ pdf-indexer book.pdf --toc -o book_indexed.pdf
 # Override page offsets from the CLI
 pdf-indexer book.pdf --json outline.json --arabic-start 1:21 --roman-start vii:5
 ```
+
+When running `--toc`, the tool first looks for an existing outline JSON next
+to the PDF (`<stem>-outline.json`, `<stem>.json`, or `<stem>_outline.json`,
+case-insensitively) and uses it instead of auto-extraction when found.
+
+## GUI (`--gui`)
+
+`pdf-indexer --gui` opens a native window (via `eframe`/egui — a single binary
+on Linux, Windows, and macOS):
+
+1. **Open PDF…** pick the input file; the output path defaults to
+   `<input>_indexed.pdf` and can be edited in the UI.
+2. If an outline JSON already exists next to the PDF (`SICP-outline.json`
+   next to `SICP.pdf`, etc.), it is loaded automatically.
+3. **Auto-extract TOC** runs the same `pdftotext`-based extraction as `--toc`
+   and shows every detected entry as a collapsible, editable tree.
+4. Tick the chapters to include (or use **Select all / Select none**), edit
+   titles, logical page numbers, and the Arabic/Roman page anchors live.
+5. **Export JSON…** writes the current selection in the JSON format below —
+   useful for later CLI runs. **Index PDF…** runs the bookmark injection
+   directly from the GUI.
+
+Extraction and indexing run on background threads, so the window stays
+responsive while the PDF is processed. The GUI can also **Load JSON…** an
+existing spec to review or modify it before indexing.
 
 ## JSON outline format
 
@@ -109,5 +137,7 @@ No Ghostscript dependency.
 | `lopdf` | PDF read, object manipulation, write (xref rebuild) |
 | `clap` | CLI argument parsing |
 | `serde` / `serde_json` | JSON outline spec deserialization |
+| `eframe` / `egui` | Cross-platform GUI (glow backend) |
+| `rfd` | Native open/save file dialogs |
 
 **Runtime requirement:** `pdftotext` (from `poppler-utils`) for `--toc` mode.
