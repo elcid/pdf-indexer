@@ -223,3 +223,6 @@ __marimo__/
 .codewhale/
 .junie/
 CLAUDE.md
+
+# IDE local configuration
+.idea/
