@@ -156,14 +156,14 @@ def auto_extract_toc(pdf_path: str) -> tuple[list[OutlineNode], argparse.Namespa
     toc_start = None
     for i, page_text in enumerate(pages):
         for line in page_text.strip().split("\n"):
-            if line.strip().lower() in ("contents", "table of contents"):
+            if line.strip().lower() in ("contents", "table of contents", "inhalt", "inhaltsverzeichnis"):
                 toc_start = i
                 break
         if toc_start is not None:
             break
 
     if toc_start is None:
-        sys.exit("Could not find a 'Contents' page in the PDF.")
+        sys.exit("Could not find a 'Contents' or 'Inhalt' page in the PDF.")
 
     # Find where TOC ends (blank page or start of chapter 1)
     toc_end = None
@@ -185,7 +185,7 @@ def auto_extract_toc(pdf_path: str) -> tuple[list[OutlineNode], argparse.Namespa
         if not line:
             continue
         m = re.match(
-            r"^((?:[A-F]|\d+)(?:\.\d+)*\s+)?(.+?)\s+(\d{1,4}|[ivxlcdm]+)\s*$",
+            r"^((?:[A-F]|\d+)(?:\.\d+)*)?\s+(.+?)\s+(\d{1,4}|[ivxlcdm]+)\s*$",
             line, re.IGNORECASE
         )
         if m:
@@ -205,11 +205,6 @@ def auto_extract_toc(pdf_path: str) -> tuple[list[OutlineNode], argparse.Namespa
                 page = int(page_str)
 
             full_title = f"{num} {title}".strip()
-
-            # Skip page-header artifacts (e.g. "Contents    xv" from TOC pages)
-            if title.lower() == "contents":
-                continue
-
             entries.append((level, full_title, page, is_roman))
 
     if not entries:
@@ -296,25 +291,11 @@ def _guess_offsets(pages: list[str], toc_page_idx: int) -> argparse.Namespace:
         text = pages[i].strip()
         if "Preface" in text:
             args.roman_start_pdf = i + 1
-            rmatch = re.search(
-                r'\b(x{0,3}(?:ix|iv|v?i{0,3}))\b', text, re.IGNORECASE
-            )
+            rmatch = re.search(r'\b(vii|viii|ix|xi|xiv|xv|xvi|xviii)\b', text)
             if rmatch:
                 args.roman_start_logical = _roman_to_int(rmatch.group(1))
             else:
-                # No numeral on the Preface page — check adjacent pages
                 args.roman_start_logical = 7
-                for j in (i + 1, i - 1):
-                    if 0 <= j < toc_page_idx:
-                        rmatch2 = re.search(
-                            r'\b(x{0,3}(?:ix|iv|v?i{0,3}))\b',
-                            pages[j].strip(), re.IGNORECASE
-                        )
-                        if rmatch2:
-                            adj_numeral = _roman_to_int(rmatch2.group(1))
-                            # Adjust logical to match the page offset
-                            args.roman_start_logical = adj_numeral - (j - i)
-                            break
             break
 
     return args
