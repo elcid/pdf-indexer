@@ -48,9 +48,13 @@ on Linux, Windows, and macOS):
    and shows every detected entry as a collapsible, editable tree.
 4. Tick the chapters to include (or use **Select all / Select none**), edit
    titles, logical page numbers, and the Arabic/Roman page anchors live.
-5. **Export JSON…** writes the current selection in the JSON format below —
-   useful for later CLI runs. **Index PDF…** runs the bookmark injection
-   directly from the GUI.
+5. **Edit the outline directly**: use the toolbar's **+ Add entry** to append
+   a new top-level chapter, and the **+** next to any chapter to add a
+   sub-section under it. A small dialog asks for the title and page; the new
+   line can then be edited in the tree like any other entry.
+6. **Save JSON** rewrites the loaded outline file in place (or asks for a
+   location when the outline was auto-extracted); **Export JSON…** saves a
+   copy. **Index PDF…** runs the bookmark injection directly from the GUI.
 
 Extraction and indexing run on background threads, so the window stays
 responsive while the PDF is processed. The GUI can also **Load JSON…** an

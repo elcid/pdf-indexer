@@ -5,7 +5,8 @@
 //   1. Open a PDF (or load an existing JSON outline)
 //   2. Auto-extract the TOC and show it as a checkbox tree
 //   3. Edit titles / pages / anchors, tick the chapters to include
-//   4. Export the JSON spec, or run the indexing directly
+//   4. Add new entries with “+” (globally, or per chapter) and save/rewrite
+//      the JSON spec, or run the indexing directly
 //
 // Extraction and indexing run on background threads so the UI stays
 // responsive while pdftotext or lopdf is working.
@@ -42,14 +43,30 @@ struct IndexerApp {
     output_path: String,
     tree: Vec<GuiNode>,
     mapping: PageMapping,
+    /// The JSON file the current outline came from (if any), so “Save JSON”
+    /// can rewrite it in place.
+    json_path: Option<PathBuf>,
     /// Raw per-page text from `pdftotext`, kept so the blank-page-aware page
     /// map can be rebuilt whenever the user edits the page-number anchors.
     page_texts: Vec<String>,
     status: String,
     status_is_error: bool,
     busy: bool,
+    /// Where the “Add entry” dialog should insert the new node.
+    pending_add: Option<AddTarget>,
+    add_title: String,
+    add_page: u32,
+    add_roman: bool,
     job_tx: Sender<JobResult>,
     job_rx: Receiver<JobResult>,
+}
+
+/// Target for a new entry: a top-level line, or a child of the node at a path
+/// (sequence of child indices) into the tree.
+#[derive(Clone, Debug)]
+enum AddTarget {
+    Root,
+    Node(Vec<usize>),
 }
 
 enum JobResult {
@@ -67,6 +84,16 @@ struct GuiNode {
 }
 
 impl GuiNode {
+    fn new(title: impl Into<String>, page: u32) -> Self {
+        Self {
+            included: true,
+            title: title.into(),
+            page,
+            roman: false,
+            children: Vec::new(),
+        }
+    }
+
     fn from_entries(entries: &[OutlineEntry]) -> Vec<GuiNode> {
         entries
             .iter()
@@ -113,6 +140,19 @@ fn selection_counts(nodes: &[GuiNode]) -> (usize, usize) {
     })
 }
 
+/// Mutable reference to the node at `path` (a sequence of child indices).
+fn node_at_mut<'a>(nodes: &'a mut [GuiNode], path: &[usize]) -> Option<&'a mut GuiNode> {
+    let mut current = nodes;
+    for (i, &idx) in path.iter().enumerate() {
+        let node = current.get_mut(idx)?;
+        if i + 1 == path.len() {
+            return Some(node);
+        }
+        current = &mut node.children;
+    }
+    None
+}
+
 impl IndexerApp {
     fn new(pdf: Option<PathBuf>, output: Option<PathBuf>) -> Self {
         let output_path = output
@@ -128,11 +168,16 @@ impl IndexerApp {
             output_path,
             tree: Vec::new(),
             mapping: PageMapping::default(),
+            json_path: None,
             page_texts: Vec::new(),
             status: "Open a PDF and run “Auto-extract TOC”, or load an existing JSON outline."
                 .to_string(),
             status_is_error: false,
             busy: false,
+            pending_add: None,
+            add_title: String::new(),
+            add_page: 1,
+            add_roman: false,
             job_tx,
             job_rx,
         };
@@ -152,6 +197,13 @@ impl IndexerApp {
             }
             if ui.button("Load JSON…").clicked() {
                 self.load_json_dialog();
+            }
+            if ui
+                .add_enabled(!self.busy, egui::Button::new("+ Add entry"))
+                .on_hover_text("Add a new top-level entry to the outline")
+                .clicked()
+            {
+                self.begin_add(AddTarget::Root);
             }
             ui.separator();
             let can_extract = self.pdf_path.is_some() && !self.busy;
@@ -176,6 +228,13 @@ impl IndexerApp {
             }
             ui.separator();
             let can_export = has_tree && !self.busy;
+            if ui
+                .add_enabled(can_export, egui::Button::new("Save JSON"))
+                .on_hover_text("Rewrite the loaded JSON (or ask for a location)")
+                .clicked()
+            {
+                self.save_json();
+            }
             if ui
                 .add_enabled(can_export, egui::Button::new("Export JSON…"))
                 .clicked()
@@ -264,6 +323,10 @@ impl IndexerApp {
                 "No outline loaded yet — open a PDF and click “Auto-extract TOC”, \
                  or load an existing JSON outline.",
             );
+            ui.add_space(8.0);
+            if ui.button("＋ Add first entry").clicked() {
+                self.begin_add(AddTarget::Root);
+            }
         } else {
             let (selected, total) = selection_counts(&self.tree);
             ui.label(format!(
@@ -274,8 +337,11 @@ impl IndexerApp {
             egui::ScrollArea::vertical()
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
+                    let mut path = Vec::new();
                     for (i, node) in self.tree.iter_mut().enumerate() {
-                        show_node(ui, node, i);
+                        path.push(i);
+                        show_node(ui, node, &mut path, &mut self.pending_add);
+                        path.pop();
                     }
                 });
         }
@@ -291,6 +357,7 @@ impl IndexerApp {
         self.pdf_path = Some(path.clone());
         self.output_path = default_output(&path).to_string_lossy().into_owned();
         self.tree.clear();
+        self.json_path = None;
         self.page_texts.clear();
         self.mapping = PageMapping::default();
         self.auto_load_json_next_to_pdf();
@@ -306,6 +373,7 @@ impl IndexerApp {
                 Ok((entries, mapping)) => {
                     self.tree = GuiNode::from_entries(&entries);
                     self.mapping = mapping;
+                    self.json_path = Some(json_path.clone());
                     self.page_texts.clear();
                     let (_, total) = selection_counts(&self.tree);
                     self.status_ok(format!(
@@ -335,6 +403,7 @@ impl IndexerApp {
             Ok((entries, mapping)) => {
                 self.tree = GuiNode::from_entries(&entries);
                 self.mapping = mapping;
+                self.json_path = Some(path.clone());
                 self.page_texts.clear();
                 let (_, total) = selection_counts(&self.tree);
                 self.status_ok(format!("Loaded {total} entries from {}", path.display()));
@@ -383,11 +452,11 @@ impl IndexerApp {
         });
     }
 
-    fn export_json(&mut self) {
+    /// Serialize the currently selected entries into the JSON spec string.
+    fn build_json(&mut self) -> Option<String> {
         let entries = gui_to_entries(&self.tree);
         if entries.is_empty() {
-            self.status_err("No entries selected — tick at least one chapter.");
-            return;
+            return None;
         }
         let spec = OutlineSpec {
             arabic_start_logical: self.mapping.arabic_start_logical,
@@ -396,32 +465,158 @@ impl IndexerApp {
             roman_start_pdf: self.mapping.roman_start_pdf,
             outline: entries,
         };
-        let json = match serde_json::to_string_pretty(&spec) {
-            Ok(json) => json,
+        match serde_json::to_string_pretty(&spec) {
+            Ok(json) => Some(json),
             Err(e) => {
                 self.status_err(format!("Failed to serialize JSON: {e}"));
-                return;
+                None
             }
-        };
-        let default_name = self
-            .pdf_path
+        }
+    }
+
+    fn default_json_name(&self) -> String {
+        self.pdf_path
             .as_deref()
             .map(|p| {
                 let stem = p.file_stem().unwrap_or_default().to_string_lossy();
                 format!("{stem}-outline.json")
             })
-            .unwrap_or_else(|| "outline.json".to_string());
+            .unwrap_or_else(|| "outline.json".to_string())
+    }
+
+    /// Write the JSON and remember the path for later in-place rewrites.
+    fn write_json_file(&mut self, path: &Path, json: String) {
+        match std::fs::write(path, json) {
+            Ok(()) => {
+                self.json_path = Some(path.to_path_buf());
+                self.status_ok(format!("Wrote {}", path.display()));
+            }
+            Err(e) => self.status_err(format!("Cannot write {}: {e}", path.display())),
+        }
+    }
+
+    /// Rewrite the loaded JSON file, or ask for a location if there is none.
+    fn save_json(&mut self) {
+        let Some(json) = self.build_json() else {
+            self.status_err("No entries selected — tick at least one chapter.");
+            return;
+        };
+        if let Some(path) = self.json_path.clone() {
+            self.write_json_file(&path, json);
+            return;
+        }
         let Some(path) = rfd::FileDialog::new()
             .add_filter("JSON", &["json"])
-            .set_file_name(&default_name)
+            .set_file_name(self.default_json_name())
             .save_file()
         else {
             return;
         };
-        match std::fs::write(&path, json) {
-            Ok(()) => self.status_ok(format!("Wrote {}", path.display())),
-            Err(e) => self.status_err(format!("Cannot write {}: {e}", path.display())),
+        self.write_json_file(&path, json);
+    }
+
+    /// Save-as: always ask for the target location.
+    fn export_json(&mut self) {
+        let Some(json) = self.build_json() else {
+            self.status_err("No entries selected — tick at least one chapter.");
+            return;
+        };
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("JSON", &["json"])
+            .set_file_name(self.default_json_name())
+            .save_file()
+        else {
+            return;
+        };
+        self.write_json_file(&path, json);
+    }
+
+    /// Open the “Add entry” dialog for the given target.
+    fn begin_add(&mut self, target: AddTarget) {
+        self.add_title.clear();
+        self.add_page = 1;
+        self.add_roman = false;
+        self.pending_add = Some(target);
+    }
+
+    /// Insert the new entry at the requested target.
+    fn add_entry(&mut self, target: AddTarget, title: String, page: u32, roman: bool) {
+        let title = if title.trim().is_empty() {
+            "New entry".to_string()
+        } else {
+            title.trim().to_string()
+        };
+        match target {
+            AddTarget::Root => {
+                let mut node = GuiNode::new(title, page);
+                node.roman = roman;
+                self.tree.push(node);
+            }
+            AddTarget::Node(path) => match node_at_mut(&mut self.tree, &path) {
+                Some(node) => {
+                    let mut child = GuiNode::new(title, page);
+                    child.roman = roman;
+                    node.children.push(child);
+                }
+                None => {
+                    let mut node = GuiNode::new(title, page);
+                    node.roman = roman;
+                    self.tree.push(node);
+                }
+            },
         }
+        self.add_title.clear();
+        self.add_page = 1;
+        self.status_ok(
+            "Entry added — edit its title/page in the tree, then click “Save JSON” \
+             to rewrite the outline file.",
+        );
+    }
+
+    /// The “Add entry” dialog: title + page, inserted on confirmation.
+    fn show_add_entry_window(&mut self, ui: &mut egui::Ui) {
+        if self.pending_add.is_none() {
+            return;
+        }
+        let is_root = matches!(self.pending_add, Some(AddTarget::Root));
+        let ctx = ui.ctx().clone();
+        egui::Window::new(if is_root {
+            "Add top-level entry"
+        } else {
+            "Add sub-section"
+        })
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(&ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Title:");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.add_title)
+                        .desired_width(280.0)
+                        .hint_text("e.g. 1.3 Results"),
+                );
+            });
+            ui.horizontal(|ui| {
+                ui.label("Page:");
+                ui.add(egui::DragValue::new(&mut self.add_page).range(1..=100_000));
+                ui.checkbox(&mut self.add_roman, "Roman page");
+            });
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                if ui.button("Add").clicked() {
+                    let target = self.pending_add.take().expect("checked above");
+                    let title = std::mem::take(&mut self.add_title);
+                    let page = self.add_page;
+                    let roman = self.add_roman;
+                    self.add_entry(target, title, page, roman);
+                    self.add_roman = false;
+                }
+                if ui.button("Cancel").clicked() {
+                    self.pending_add = None;
+                }
+            });
+        });
     }
 
     fn poll_jobs(&mut self) {
@@ -470,15 +665,22 @@ impl eframe::App for IndexerApp {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.show_add_entry_window(ui);
         egui::Panel::top("tools").show(ui, |ui| self.toolbar(ui));
         egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
         egui::CentralPanel::default().show(ui, |ui| self.content(ui));
     }
 }
 
-/// Render one outline node: checkbox + page number + collapsible editor.
-fn show_node(ui: &mut egui::Ui, node: &mut GuiNode, id: usize) {
-    ui.push_id(id, |ui| {
+/// Render one outline node: checkbox + page number + collapsible editor plus
+/// a “+” button that queues an "add sub-section" dialog for this node.
+fn show_node(
+    ui: &mut egui::Ui,
+    node: &mut GuiNode,
+    path: &mut Vec<usize>,
+    add_request: &mut Option<AddTarget>,
+) {
+    ui.push_id(path.clone(), |ui| {
         ui.horizontal(|ui| {
             ui.checkbox(&mut node.included, "");
             ui.add(
@@ -488,6 +690,13 @@ fn show_node(ui: &mut egui::Ui, node: &mut GuiNode, id: usize) {
             );
             if node.roman {
                 ui.label("roman");
+            }
+            if ui
+                .small_button("+")
+                .on_hover_text("Add sub-section under this entry")
+                .clicked()
+            {
+                *add_request = Some(AddTarget::Node(path.clone()));
             }
             egui::CollapsingHeader::new(&node.title)
                 .default_open(true)
@@ -502,7 +711,9 @@ fn show_node(ui: &mut egui::Ui, node: &mut GuiNode, id: usize) {
                     });
                     ui.indent("children", |ui| {
                         for (ci, child) in node.children.iter_mut().enumerate() {
-                            show_node(ui, child, ci);
+                            path.push(ci);
+                            show_node(ui, child, path, add_request);
+                            path.pop();
                         }
                     });
                 });
@@ -581,5 +792,51 @@ mod tests {
         assert_eq!(app.tree.len(), 1);
         assert!(app.status.contains("found next to the PDF"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn add_entry_creates_root_and_children() {
+        let mut app = IndexerApp::new(None, None);
+
+        app.add_entry(AddTarget::Root, "Chapter 1".to_string(), 1, false);
+        assert_eq!(app.tree.len(), 1);
+        assert_eq!(app.tree[0].title, "Chapter 1");
+
+        app.add_entry(
+            AddTarget::Node(vec![0]),
+            "1.1 Background".to_string(),
+            2,
+            false,
+        );
+        assert_eq!(app.tree[0].children.len(), 1);
+        assert_eq!(app.tree[0].children[0].title, "1.1 Background");
+        assert_eq!(app.tree[0].children[0].page, 2);
+
+        // An empty title falls back to a placeholder.
+        app.add_entry(AddTarget::Node(vec![0]), "   ".to_string(), 3, true);
+        assert_eq!(app.tree[0].children[1].title, "New entry");
+        assert!(app.tree[0].children[1].roman);
+
+        // A stale path degrades to a root entry instead of panicking.
+        app.add_entry(AddTarget::Node(vec![99, 0]), "Orphan".to_string(), 4, false);
+        assert_eq!(app.tree[1].title, "Orphan");
+    }
+
+    #[test]
+    fn node_at_mut_resolves_nested_paths() {
+        let mut tree = GuiNode::from_entries(&[OutlineEntry {
+            title: "1".into(),
+            page: 1,
+            roman: false,
+            children: vec![OutlineEntry {
+                title: "1.1".into(),
+                page: 2,
+                roman: false,
+                children: vec![entry("1.1.1", 3)],
+            }],
+        }]);
+        let leaf = node_at_mut(&mut tree, &[0, 0, 0]).expect("path should resolve");
+        assert_eq!(leaf.title, "1.1.1");
+        assert!(node_at_mut(&mut tree, &[5]).is_none());
     }
 }
