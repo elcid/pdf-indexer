@@ -221,4 +221,5 @@ __marimo__/
 # Local agent tooling and state
 .agent/
 .codewhale/
+.junie/
 CLAUDE.md
