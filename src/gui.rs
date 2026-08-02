@@ -84,12 +84,12 @@ struct GuiNode {
 }
 
 impl GuiNode {
-    fn new(title: impl Into<String>, page: u32) -> Self {
+    fn new(title: impl Into<String>, page: u32, roman: bool) -> Self {
         Self {
             included: true,
             title: title.into(),
             page,
-            roman: false,
+            roman,
             children: Vec::new(),
         }
     }
@@ -547,22 +547,10 @@ impl IndexerApp {
             title.trim().to_string()
         };
         match target {
-            AddTarget::Root => {
-                let mut node = GuiNode::new(title, page);
-                node.roman = roman;
-                self.tree.push(node);
-            }
+            AddTarget::Root => self.tree.push(GuiNode::new(title, page, roman)),
             AddTarget::Node(path) => match node_at_mut(&mut self.tree, &path) {
-                Some(node) => {
-                    let mut child = GuiNode::new(title, page);
-                    child.roman = roman;
-                    node.children.push(child);
-                }
-                None => {
-                    let mut node = GuiNode::new(title, page);
-                    node.roman = roman;
-                    self.tree.push(node);
-                }
+                Some(node) => node.children.push(GuiNode::new(title, page, roman)),
+                None => self.tree.push(GuiNode::new(title, page, roman)),
             },
         }
         self.add_title.clear();
@@ -574,12 +562,11 @@ impl IndexerApp {
     }
 
     /// The “Add entry” dialog: title + page, inserted on confirmation.
-    fn show_add_entry_window(&mut self, ui: &mut egui::Ui) {
+    fn show_add_entry_window(&mut self, ctx: &egui::Context) {
         if self.pending_add.is_none() {
             return;
         }
         let is_root = matches!(self.pending_add, Some(AddTarget::Root));
-        let ctx = ui.ctx().clone();
         egui::Window::new(if is_root {
             "Add top-level entry"
         } else {
@@ -588,7 +575,7 @@ impl IndexerApp {
         .collapsible(false)
         .resizable(false)
         .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-        .show(&ctx, |ui| {
+        .show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.label("Title:");
                 ui.add(
@@ -665,7 +652,7 @@ impl eframe::App for IndexerApp {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        self.show_add_entry_window(ui);
+        self.show_add_entry_window(ui.ctx());
         egui::Panel::top("tools").show(ui, |ui| self.toolbar(ui));
         egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
         egui::CentralPanel::default().show(ui, |ui| self.content(ui));

@@ -100,6 +100,11 @@ Supports both English ("Contents", "Table of Contents") and German
 4. Recursively nests entries by section numbering (dot-depth and section
    boundaries)
 
+The extraction always prepends a synthetic `Contents` entry pointing at the
+TOC page itself. If the outline JSON next to the PDF already contains a
+`Contents` entry (like `sicp-outline.json` does), untick or delete the
+duplicate in the GUI before indexing.
+
 ### Page-number extraction robustness
 
 The `PageNumberMap` handles:

@@ -226,3 +226,6 @@ CLAUDE.md
 
 # IDE local configuration
 .idea/
+
+# pdf-indexer output
+*_indexed.pdf
