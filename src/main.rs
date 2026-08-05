@@ -16,6 +16,7 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(
     name = "pdf-toc-adder",
+    version,
     about = "Inject a navigable outline into a PDF",
     after_help = "Examples:\n  \
                   pdf-toc-adder book.pdf --json outline.json -o indexed.pdf\n  \
