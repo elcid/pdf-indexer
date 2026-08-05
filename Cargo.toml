@@ -2,6 +2,12 @@
 name = "pdf-indexer"
 version = "0.1.0"
 edition = "2021"
+description = "Inject a navigable table-of-contents outline (bookmarks) into any PDF"
+license = "MIT"
+repository = "https://github.com/elcid/pdf-indexer"
+keywords = ["pdf", "outline", "bookmarks", "toc", "pdf-tools"]
+categories = ["command-line-utilities", "text-processing"]
+exclude = ["*.pdf", "sicp-outline.json"]
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
