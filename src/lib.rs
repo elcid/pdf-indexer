@@ -1,4 +1,4 @@
-// pdf-indexer — Inject a navigable table-of-contents outline into any PDF.
+// pdf-toc-adder — Inject a navigable table-of-contents outline into any PDF.
 //
 // Two modes:
 //   --json SPEC    Read outline from a JSON specification file.
@@ -1154,7 +1154,7 @@ mod tests {
 
     fn with_temp_dir(name: &str, f: impl FnOnce(&Path)) {
         let dir =
-            std::env::temp_dir().join(format!("pdf-indexer-test-{name}-{}", std::process::id()));
+            std::env::temp_dir().join(format!("pdf-toc-adder-test-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         f(&dir);

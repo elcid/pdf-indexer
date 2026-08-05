@@ -1,4 +1,4 @@
-// pdf-indexer — graphical TOC editor.
+// pdf-toc-adder — graphical TOC editor.
 //
 // An egui/eframe front end over the library pipeline:
 //
@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use eframe::egui;
-use pdf_indexer::{
+use pdf_toc_adder::{
     count_all, default_output, extract_toc, find_outline_json, index_pdf, load_json, OutlineEntry,
     OutlineSpec, PageMapping, TocExtraction,
 };
@@ -31,7 +31,7 @@ pub fn run(pdf: Option<PathBuf>, output: Option<PathBuf>) -> Result<()> {
         ..Default::default()
     };
     eframe::run_native(
-        "pdf-indexer — TOC editor",
+        "pdf-toc-adder — TOC editor",
         options,
         Box::new(move |_cc| Ok(Box::new(IndexerApp::new(pdf, output)))),
     )
@@ -767,7 +767,7 @@ mod tests {
 
     #[test]
     fn auto_loads_json_found_next_to_pdf() {
-        let dir = std::env::temp_dir().join(format!("pdf-indexer-gui-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("pdf-toc-adder-gui-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let pdf = dir.join("SICP.pdf");

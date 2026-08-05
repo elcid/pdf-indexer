@@ -1,4 +1,4 @@
-// pdf-indexer — CLI entry point.
+// pdf-toc-adder — CLI entry point.
 //
 // The pipeline itself lives in the library crate (`lib.rs`); this binary only
 // parses CLI arguments and optionally starts the GUI (`gui.rs`).
@@ -7,7 +7,7 @@ mod gui;
 
 use anyhow::{bail, Context, Result};
 use clap::Parser;
-use pdf_indexer::{
+use pdf_toc_adder::{
     apply_anchor_overrides, count_all, default_output, extract_toc, find_outline_json, index_pdf,
     load_json,
 };
@@ -15,13 +15,13 @@ use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(
-    name = "pdf-indexer",
+    name = "pdf-toc-adder",
     about = "Inject a navigable outline into a PDF",
     after_help = "Examples:\n  \
-                  pdf-indexer book.pdf --json outline.json -o indexed.pdf\n  \
-                  pdf-indexer book.pdf --toc -o indexed.pdf\n  \
-                  pdf-indexer --gui\n  \
-                  pdf-indexer book.pdf --json outline.json --arabic-start 1:21 --roman-start vii:5"
+                  pdf-toc-adder book.pdf --json outline.json -o indexed.pdf\n  \
+                  pdf-toc-adder book.pdf --toc -o indexed.pdf\n  \
+                  pdf-toc-adder --gui\n  \
+                  pdf-toc-adder book.pdf --json outline.json --arabic-start 1:21 --roman-start vii:5"
 )]
 struct Cli {
     /// Input PDF file (optional — the GUI can pick one via dialog)

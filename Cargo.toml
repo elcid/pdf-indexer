@@ -1,6 +1,6 @@
 [package]
-name = "pdf-indexer"
-version = "0.1.0"
+name = "pdf-toc-adder"
+version = "0.2.0"
 edition = "2021"
 description = "Inject a navigable table-of-contents outline (bookmarks) into any PDF"
 license = "MIT"
@@ -13,7 +13,10 @@ exclude = ["*.pdf", "sicp-outline.json"]
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-lopdf = "0.40"
+# lopdf 0.44.0's default "time" feature references a time::FormatItem::StringLiteral
+# variant that does not exist in any time 0.3.x release, so its default build fails;
+# we do not use date/time conversions, so default features are disabled
+lopdf = { version = "0.44", default-features = false }
 anyhow = "1.0"
-eframe = { version = "0.35", default-features = false, features = ["accesskit", "default_fonts", "glow", "wayland", "x11"] }
+eframe = { version = "0.36", default-features = false, features = ["accesskit", "default_fonts", "glow", "wayland", "x11"] }
 rfd = "0.17.2"

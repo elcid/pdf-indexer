@@ -1,4 +1,4 @@
-# pdf-indexer
+# pdf-toc-adder
 
 Inject a navigable table-of-contents outline into any PDF — Rust port.
 
@@ -13,22 +13,22 @@ PDF bookmark objects.
 cargo build --release
 ```
 
-The binary lands at `target/release/pdf-indexer`.
+The binary lands at `target/release/pdf-toc-adder`.
 
 ## Usage
 
 ```bash
 # Graphical TOC editor (Linux / Windows / macOS)
-pdf-indexer --gui
+pdf-toc-adder --gui
 
 # From a JSON specification
-pdf-indexer book.pdf --json outline.json -o book_indexed.pdf
+pdf-toc-adder book.pdf --json outline.json -o book_indexed.pdf
 
 # Auto-extract TOC from the PDF's own Contents/Inhalt pages
-pdf-indexer book.pdf --toc -o book_indexed.pdf
+pdf-toc-adder book.pdf --toc -o book_indexed.pdf
 
 # Override page offsets from the CLI
-pdf-indexer book.pdf --json outline.json --arabic-start 1:21 --roman-start vii:5
+pdf-toc-adder book.pdf --json outline.json --arabic-start 1:21 --roman-start vii:5
 ```
 
 When running `--toc`, the tool first looks for an existing outline JSON next
@@ -37,7 +37,7 @@ case-insensitively) and uses it instead of auto-extraction when found.
 
 ## GUI (`--gui`)
 
-`pdf-indexer --gui` opens a native window (via `eframe`/egui — a single binary
+`pdf-toc-adder --gui` opens a native window (via `eframe`/egui — a single binary
 on Linux, Windows, and macOS):
 
 1. **Open PDF…** pick the input file; the output path defaults to

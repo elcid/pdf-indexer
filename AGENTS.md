@@ -46,7 +46,7 @@ Not lazy about: understanding the problem (read it fully and trace the real flow
 - Format: `cargo fmt`
 - Lint: `cargo clippy`
 
-### Project: pdf-indexer
+### Project: pdf-toc-adder
 
 ### Documentation
 
