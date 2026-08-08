@@ -88,9 +88,12 @@ existing spec to review or modify it before indexing.
 
 Automatically locates the table-of-contents page and extracts all entries.
 Supports both English ("Contents", "Table of Contents") and German
-("Inhalt", "Inhaltsverzeichnis") headings. The tool:
+("Inhalt", "Inhaltsverzeichnis") headings. Scanned TOC pages (images) are
+recognized via OCR. The tool:
 
-1. Runs `pdftotext` (requires **poppler-utils**) and scans for the TOC page
+1. Runs `pdftotext` (requires **poppler-utils**) and scans for the TOC page;
+   if none is found, it OCRs image-only pages with **tesseract** (German
+   language data `deu` preferred) and re-scans there
 2. Detects page-number mapping offsets: Roman front-matter via Preface/Vorwort,
    Arabic body via Chapter 1 / first numbered section
 3. Builds a blank-page-aware `PageNumberMap` from printed page numbers,
@@ -149,4 +152,6 @@ No Ghostscript dependency.
 | `eframe` / `egui` | Cross-platform GUI (glow backend) |
 | `rfd` | Native open/save file dialogs |
 
-**Runtime requirement:** `pdftotext` (from `poppler-utils`) for `--toc` mode.
+**Runtime requirement:** `pdftotext` (from `poppler-utils`) for `--toc` mode;
+`tesseract` (and its `deu` language data for German books) additionally for
+scanned (image-only) TOC pages.

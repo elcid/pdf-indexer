@@ -739,54 +739,107 @@ pub fn extract_toc(pdf_path: &Path) -> Result<TocExtraction> {
     }
 
     let text = String::from_utf8_lossy(&output.stdout);
-    let pages: Vec<&str> = text.split('\x0c').collect();
+    let mut pages: Vec<String> = text.split('\x0c').map(|s| s.to_string()).collect();
+    // pdftotext ends the output with a form feed, which would leave a bogus
+    // trailing empty "page" that shifts OCR page numbers past the last page.
+    if pages.last().is_some_and(|p| p.is_empty()) {
+        pages.pop();
+    }
 
     // ── 2. Find the Contents page ─────────────────────────────────────────
-    let toc_start = pages
+    // A book can hold several TOC-like pages (a short front "Inhalt" may list
+    // only part names), so collect all candidates and parse them in order
+    // until one yields entries.
+    let mut candidates: Vec<usize> = pages
         .iter()
-        .position(|page| {
-            page.lines().any(|line| {
-                let t = line.trim().to_lowercase();
-                let first = t.split_whitespace().next().unwrap_or("");
-                // Match heading: "Contents" or "Inhalt" as first word, or
-                // multi-word "Table of Contents" / "Inhaltsverzeichnis".
-                // Use first-word check to avoid matching copyright CIP data
-                // (e.g. "CONTENTS: 1. Programming  1").
-                first == "contents"
-                    || first == "inhalt"
-                    || t.contains("table of contents")
-                    || t.contains("inhaltsverzeichnis")
-            })
-        })
-        .context("could not find a 'Contents', 'Inhalt', or 'Table of Contents' page")?;
+        .enumerate()
+        .filter(|(_, p)| is_toc_heading_page(p))
+        .map(|(i, _)| i)
+        .collect();
+    let mut toc_is_ocr = false;
 
-    // ── 3. Find where the TOC ends ────────────────────────────────────────
-    let toc_end = (toc_start + 1..pages.len().min(toc_start + 10))
-        .find(|&i| {
-            let text = pages[i].trim();
-            text.is_empty()
-                || text.lines().any(|l| {
-                    let l = l.trim().to_lowercase();
-                    l == "chapter 1"
-                        || l == "1"
-                        || (l.starts_with("1 ")
-                            && l.chars().nth(2).is_some_and(|c| c.is_alphabetic()))
-                })
-        })
-        .unwrap_or(toc_start + 8);
-
-    let toc_text: String = pages[toc_start..toc_end.min(pages.len())].join("\n");
-
-    // ── 4. Parse individual TOC entries ───────────────────────────────────
-    let parsed = parse_toc_entries(&toc_text)?;
-    if parsed.is_empty() {
-        anyhow::bail!(
-            "no TOC entries could be parsed from the Contents/Inhalt page\n  \
-             hint: the auto-extractor needs page numbers at the end of each TOC \
-             line;\n  \
-             if your TOC has no page numbers, use --json instead"
-        );
+    if candidates.is_empty() {
+        // No TOC heading in the text layer — the TOC page may be a scan.
+        // OCR the pages that have no real text (image pages) with tesseract
+        // and look for the heading there.
+        let mut ocr_count = 0u32;
+        for (i, page) in pages.iter_mut().enumerate() {
+            if page.split_whitespace().count() > 2 {
+                continue; // page has a real text layer
+            }
+            let Some(ocr) = ocr_page(pdf_path, i as u32 + 1) else {
+                continue;
+            };
+            ocr_count += 1;
+            if is_toc_heading_page(&ocr) {
+                toc_is_ocr = true;
+                candidates.push(i);
+                *page = ocr;
+            }
+            // ponytail: cap the OCR scan so a fully scanned book without a
+            // findable TOC doesn't OCR forever; 50 pages ≈ 1–2 minutes.
+            if ocr_count >= 50 {
+                break;
+            }
+        }
     }
+
+    // ── 3+4. Find where each candidate's TOC ends; parse until one yields ─
+    let mut toc_start: Option<usize> = None;
+    let mut toc_end: usize = 0;
+    let mut parsed: Vec<TocLine> = Vec::new();
+
+    for &i in &candidates {
+        let end = if toc_is_ocr {
+            // A scanned TOC may span several image pages: extend through
+            // consecutive near-empty pages whose OCR has any content.
+            let mut end = i + 1;
+            while end < pages.len() && end <= i + 10 {
+                if pages[end].split_whitespace().count() > 2 {
+                    break; // a real text page — the TOC is over
+                }
+                let Some(ocr) = ocr_page(pdf_path, end as u32 + 1) else {
+                    break;
+                };
+                if ocr.trim().is_empty() {
+                    break;
+                }
+                pages[end] = ocr;
+                end += 1;
+            }
+            end
+        } else {
+            (i + 1..pages.len().min(i + 10))
+                .find(|&j| {
+                    let text = pages[j].trim();
+                    text.is_empty()
+                        || text.lines().any(|l| {
+                            let l = l.trim().to_lowercase();
+                            l == "chapter 1"
+                                || l == "1"
+                                || (l.starts_with("1 ")
+                                    && l.chars().nth(2).is_some_and(|c| c.is_alphabetic()))
+                        })
+                })
+                .unwrap_or(i + 8)
+        };
+
+        let toc_text: String = pages[i..end.min(pages.len())].join("\n");
+        if let Ok(lines) = parse_toc_entries(&toc_text) {
+            toc_start = Some(i);
+            toc_end = end;
+            parsed = lines;
+            break;
+        }
+    }
+
+    let toc_start = toc_start.context(
+        "could not find a parseable 'Contents' or 'Inhalt' page\n  \
+         hint: the auto-extractor needs page numbers at the end of each TOC \
+         line;\n  \
+         if your TOC has no page numbers, use --json instead\n  \
+         (scanned TOC pages additionally need tesseract-ocr)",
+    )?;
 
     // ── 5. Guess page offsets ─────────────────────────────────────────────
     let mapping = guess_offsets(&pages, toc_start, toc_end);
@@ -818,8 +871,77 @@ pub fn extract_toc(pdf_path: &Path) -> Result<TocExtraction> {
     Ok(TocExtraction {
         entries: tree,
         mapping,
-        page_texts: pages.iter().map(|s| s.to_string()).collect(),
+        page_texts: pages,
     })
+}
+
+/// True when the page looks like the start of a table of contents: a line
+/// whose first word is a TOC heading ("Contents" or "Inhalt").
+///
+/// First-word headings must be short lines — body text lines routinely start
+/// with "Inhalt verwachsen …". The multi-word phrase
+/// matches ("table of contents", "inhaltsverzeichnis") are unambiguous and
+/// also avoid copyright CIP data (e.g. "CONTENTS: 1. Programming  1").
+fn is_toc_heading_page(page: &str) -> bool {
+    page.lines().any(|line| {
+        let t = line.trim().to_lowercase();
+        let words: Vec<&str> = t.split_whitespace().collect();
+        let first = words.first().copied().unwrap_or("");
+        (words.len() <= 2 && matches!(first, "contents" | "inhalt"))
+            || t.contains("table of contents")
+            || t.contains("inhaltsverzeichnis")
+    })
+}
+
+/// OCR a single PDF page: render it with pdftoppm and read it with tesseract.
+///
+/// Uses the German language data first (the headings we look for are often
+/// "Übersicht" / "Inhalt") and falls back to tesseract's default language
+/// when the 'deu' traineddata is missing. Returns `None` when pdftoppm or
+/// tesseract is unavailable.
+fn ocr_page(pdf_path: &Path, page: u32) -> Option<String> {
+    let dir = std::env::temp_dir().join(format!("pdf-toc-adder-ocr-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok()?;
+    let prefix = dir.join(format!("page-{page}"));
+
+    let status = Command::new("pdftoppm")
+        .args([
+            "-f",
+            &page.to_string(),
+            "-l",
+            &page.to_string(),
+            "-r",
+            "400",
+            "-singlefile",
+            "-png",
+        ])
+        .arg(pdf_path)
+        .arg(&prefix)
+        .status()
+        .ok()?;
+    if !status.success() {
+        return None;
+    }
+
+    let png = prefix.with_extension("png");
+    let mut text = String::new();
+    for lang in ["deu", ""] {
+        // "" → tesseract's default language
+        let mut cmd = Command::new("tesseract");
+        // --psm 6 (single uniform block): dense TOC pages otherwise lose the
+        // right-aligned page-number column.
+        cmd.args(["--psm", "6"]).arg(&png).arg("stdout");
+        if !lang.is_empty() {
+            cmd.args(["-l", lang]);
+        }
+        let out = cmd.output().ok()?;
+        if out.status.success() {
+            text = String::from_utf8_lossy(&out.stdout).into_owned();
+            break;
+        }
+    }
+    let _ = std::fs::remove_file(&png);
+    Some(text)
 }
 
 fn is_back_matter(word: &str) -> bool {
@@ -984,7 +1106,7 @@ fn build_toc_tree(lines: &[TocLine]) -> Vec<OutlineEntry> {
 /// because some books number TOC pages differently from front matter.
 ///
 /// **Arabic anchor** — first page after the TOC that looks like Chapter 1.
-fn guess_offsets(pages: &[&str], toc_start: usize, toc_end: usize) -> PageMapping {
+fn guess_offsets(pages: &[String], toc_start: usize, toc_end: usize) -> PageMapping {
     let mut mapping = PageMapping::default();
 
     // ── Roman anchor from Preface page ────────────────────────────────────
@@ -1043,7 +1165,8 @@ fn guess_offsets(pages: &[&str], toc_start: usize, toc_end: usize) -> PageMappin
     }
 
     // ── Build the page-number map for blank-page-aware lookups ─────────────
-    mapping.page_map = PageNumberMap::build(pages, mapping.arabic_start_pdf);
+    let refs: Vec<&str> = pages.iter().map(String::as_str).collect();
+    mapping.page_map = PageNumberMap::build(&refs, mapping.arabic_start_pdf);
 
     mapping
 }
@@ -1199,5 +1322,16 @@ mod tests {
             let pdf = dir.join("book.pdf");
             assert_eq!(find_outline_json(&pdf), None);
         });
+    }
+
+    #[test]
+    fn toc_heading_detection_contents_and_inhalt() {
+        assert!(is_toc_heading_page("Inhalt\n1  Einleitung  1"));
+        assert!(is_toc_heading_page("Contents"));
+        assert!(is_toc_heading_page("Table of Contents\n1  Introduction  1"));
+        assert!(is_toc_heading_page("Inhaltsverzeichnis\n1  Einleitung  1"));
+        assert!(!is_toc_heading_page("Übersicht\n\nVorrede\n"));
+        assert!(!is_toc_heading_page("Inhaltlichen Denkens steht am Anfang"));
+        assert!(!is_toc_heading_page("CONTENTS: 1. Programming  1\n"));
     }
 }
